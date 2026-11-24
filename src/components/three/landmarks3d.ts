@@ -26,6 +26,9 @@ function clayTree(trunkH = 1.2, crownR = 1.4, crownColor = '#5eae5a', fruit?: st
   t.add(trunk)
   // 蓬松树冠：中心大球 + 环绕小球
   const crown = new THREE.Group()
+  crown.userData.sway = true
+  crown.userData.swayPhase = Math.random() * Math.PI * 2
+  crown.userData.swayAmp = 0.012
   const leafMat = c(crownColor)
   const main = new THREE.Mesh(new THREE.SphereGeometry(crownR, 18, 16), leafMat)
   main.position.y = 0
@@ -255,10 +258,14 @@ function buildMailbox(season: SeasonId = 'summer'): THREE.Group {
   box.position.y = 2.0
   g.add(box)
 
-  // 箱体上的信件投递口
-  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.08), c('#3f7fa8'))
+  // 箱体上的信件投递口（加深颜色、略加厚，让正面辨识度更高）
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.18, 0.1), c('#2d5f86'))
   slot.position.set(0, 1.9, 0.62)
   g.add(slot)
+  // 投递口下方的浅色小挡沿，强化"投信口"的层次
+  const slotLip = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.12), c('#7db4d8'))
+  slotLip.position.set(0, 1.78, 0.62)
+  g.add(slotLip)
 
   const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), c('#999'))
   flagPole.position.set(0.55, 2.85, 0)
@@ -267,8 +274,8 @@ function buildMailbox(season: SeasonId = 'summer'): THREE.Group {
   flag.position.set(0.78, 3.1, 0)
   g.add(flag)
 
-  // 周围小贝壳/花（花随季节变色）
-  g.add(clayFlower(0.9, 0.9, theme.flowerColors[0]))
+  // 周围小贝壳/花（花放在信箱侧后方，避免挡正面投信口）
+  g.add(clayFlower(-1.1, -0.7, theme.flowerColors[0]))
   const shell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), c('#fff2e0'))
   shell.position.set(-0.8, 0.1, -0.7)
   shell.scale.y = 0.4
@@ -282,7 +289,21 @@ function buildMailbox(season: SeasonId = 'summer'): THREE.Group {
     g.add(snow)
   }
 
-  return castShadow(g)
+  // 隐形扩展碰撞体：放大信箱的可点击区域，让远景/鼠标悬停也能稳定命中，
+  // 避免被前面细小物体挡住射线。透明不渲染，仅参与 raycast。
+  const hitbox = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.5, 1.5, 2.6, 12),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }),
+  )
+  hitbox.position.y = 1.5
+  hitbox.userData.isHitbox = true
+  g.add(hitbox)
+
+  castShadow(g)
+  // 隐形碰撞体不投射/接收阴影，避免出现透明圆柱阴影
+  hitbox.castShadow = false
+  hitbox.receiveShadow = false
+  return g
 }
 
 // ================= 岛主小屋（核心建筑，最精细） =================
@@ -340,9 +361,14 @@ function addSnow(target: THREE.Group, width: number): void {
 }
 
 export const LANDMARKS_3D: Landmark3DDef[] = [
-  { kind: 'about', label: '岛主小屋', sub: '关于我', x: 0, z: -2.5, rotY: Math.PI / 6, build: buildCabin },
-  { kind: 'work', label: '岛屿灯塔', sub: '工作经历', x: -8.5, z: 3.5, rotY: -0.4, build: buildLighthouse },
-  { kind: 'projects', label: '果树工坊', sub: '项目经验', x: 8, z: -5, rotY: -0.35, build: buildOrchard },
-  { kind: 'skills', label: '森林瞭望台', sub: '专业技能', x: -3.5, z: 7.5, rotY: 0.5, build: buildLookout },
-  { kind: 'contact', label: '海边信箱', sub: '联系方式', x: 9, z: 3, rotY: -0.6, build: buildMailbox },
+  // 岛主小屋：岛中央偏后，作为视觉主锚点（主建筑居中）
+  { kind: 'about', label: '岛主小屋', sub: '关于我', x: 0, z: -1.5, rotY: Math.PI / 6, build: buildCabin },
+  // 岛屿灯塔：左后，拉开与瞭望台的距离
+  { kind: 'work', label: '岛屿灯塔', sub: '工作经历', x: -8.8, z: 1.2, rotY: -0.4, build: buildLighthouse },
+  // 果树工坊：右后，略向外避免标签贴顶
+  { kind: 'projects', label: '果树工坊', sub: '项目经验', x: 8.6, z: -2.2, rotY: -0.35, build: buildOrchard },
+  // 森林瞭望台：左前，远离小屋避免标签重叠
+  { kind: 'skills', label: '森林瞭望台', sub: '专业技能', x: -4.6, z: 7.8, rotY: 0.5, build: buildLookout },
+  // 海边信箱：右前靠岛缘，正面(投信口)朝默认相机视线，四周净空不遮挡
+  { kind: 'contact', label: '海边信箱', sub: '联系方式', x: 9.4, z: 4.8, rotY: 1.06, build: buildMailbox },
 ]

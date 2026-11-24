@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import * as THREE from 'three'
 import type { LandmarkKind } from './landmarks/types'
 import { useIslandScene, type IslandSceneHandle } from './three/useIslandScene'
 import { LANDMARKS_3D } from './three/landmarks3d'
@@ -13,13 +14,19 @@ export const LANDMARKS = LANDMARKS_3D.map((l) => ({
   sub: l.sub,
 }))
 
-/** 每个地标名牌悬浮高度（相对模型根部 y=0） */
-const LABEL_HEIGHT: Record<LandmarkKind, number> = {
-  about: 6.4,
-  work: 7.0,
-  projects: 5.8,
-  skills: 5.6,
-  contact: 3.4,
+/** 每个地标名牌的额外高度偏移（在模型包围盒顶部之上再抬高一点，避免贴顶） */
+const LABEL_PADDING: Record<LandmarkKind, number> = {
+  about: 1.0,
+  work: 1.0,
+  projects: 1.0,
+  skills: 1.0,
+  contact: 0.8,
+}
+
+/** 对外暴露的岛屿场景控制句柄（App 用它触发导航 flyTo / reset） */
+export interface IslandSceneRef {
+  flyTo: (kind: LandmarkKind, onDone?: () => void) => void
+  resetView: (onDone?: () => void) => void
 }
 
 interface IslandSceneProps {
@@ -32,11 +39,19 @@ interface IslandSceneProps {
  * 3D 动森风格岛屿：Three.js 等距软陶场景。
  * 支持季节切换、拖拽旋转、缓慢自转、视线跟随动物居民、点击地标弹出图鉴。
  */
-export default function IslandScene({ onOpen, onSound }: IslandSceneProps) {
+const IslandScene = forwardRef<IslandSceneRef, IslandSceneProps>(function IslandScene(
+  { onOpen, onSound },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [season, setSeason] = useState<SeasonId>('spring')
   const handleRef = useRef<IslandSceneHandle | null>(null)
   const mountedLandmarksRef = useRef<Set<string>>(new Set())
+
+  useImperativeHandle(ref, () => ({
+    flyTo: (kind, onDone) => handleRef.current?.flyToLandmark(kind, onDone),
+    resetView: (onDone) => handleRef.current?.resetView(onDone),
+  }))
 
   const mountLandmarks = (handle: IslandSceneHandle, seasonId: SeasonId) => {
     // 清理旧地标
@@ -48,7 +63,11 @@ export default function IslandScene({ onOpen, onSound }: IslandSceneProps) {
       handle.addLandmark(lm.kind, model, lm.x, lm.z, lm.rotY, () => {
         onOpen(lm.kind, { x: 0, y: 0 })
       })
-      const sprite = makeLabelSprite(lm.label, lm.sub, LABEL_HEIGHT[lm.kind], 0.9)
+
+      // 标签高度：按模型包围盒实际高度自动计算，避免硬编码导致贴顶/被遮挡
+      const box = new THREE.Box3().setFromObject(model)
+      const topY = box.max.y + (LABEL_PADDING[lm.kind] ?? 1.5)
+      const sprite = makeLabelSprite(lm.label, lm.sub, topY, 0.9)
       model.add(sprite)
       mountedLandmarksRef.current.add(lm.kind)
     })
@@ -122,4 +141,6 @@ export default function IslandScene({ onOpen, onSound }: IslandSceneProps) {
       </p>
     </div>
   )
-}
+})
+
+export default IslandScene

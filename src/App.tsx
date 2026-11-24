@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button, Card, Tag, Title, Footer } from 'animal-island-ui'
-import IslandScene, { LANDMARKS } from './components/IslandScene'
+import IslandScene, { type IslandSceneRef, LANDMARKS } from './components/IslandScene'
 import IslandPanel from './components/IslandPanel'
 import ResumeCard from './components/ResumeCard'
 import DetailModal from './components/DetailModal'
@@ -22,6 +22,7 @@ function SkillGlyph({ type }: { type: SkillGroup['icon'] }) {
 
 export default function App() {
   const { play, enabled, setEnabled } = useSound()
+  const islandRef = useRef<IslandSceneRef>(null)
   const [panelKind, setPanelKind] = useState<LandmarkKind | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [panelOrigin, setPanelOrigin] = useState({ x: 0, y: 0 })
@@ -33,7 +34,11 @@ export default function App() {
     setPanelOrigin(origin)
     setPanelOpen(true)
   }
-  const closePanel = () => setPanelOpen(false)
+  const closePanel = () => {
+    setPanelOpen(false)
+    // 关闭面板后，相机平滑回到小岛全景
+    islandRef.current?.resetView()
+  }
 
   const openDetail = (item: ExperienceItem) => {
     setSelected(item)
@@ -60,10 +65,12 @@ export default function App() {
               key={lm.kind}
               type="button"
               className="nav-link"
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect()
+              onClick={() => {
                 play('open')
-                openPanel(lm.kind, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
+                // 导航项：镜头飞近该地标，飞到位后展开面板
+                islandRef.current?.flyTo(lm.kind, () => {
+                  openPanel(lm.kind, { x: 0, y: 0 })
+                })
               }}
             >
               {lm.sub}
@@ -77,7 +84,7 @@ export default function App() {
 
       {/* ===== 3D 动森小岛 ===== */}
       <header className="hero" id="top">
-        <IslandScene onOpen={openPanel} onSound={play} />
+        <IslandScene ref={islandRef} onOpen={openPanel} onSound={play} />
       </header>
 
       {/* ===== 上下板块过渡带：潜入图鉴 ===== */}
@@ -89,7 +96,7 @@ export default function App() {
         </a>
       </div>
 
-      {/* ===== 声音开关 ===== */}
+      {/* ===== 声音开关（纯图标小圆钮，不抢戏） ===== */}
       <button
         className="sound-toggle"
         onClick={() => setEnabled(!enabled)}
@@ -97,7 +104,6 @@ export default function App() {
         title={enabled ? '点击关闭音效' : '点击开启音效'}
       >
         <span className={`sound-icon ${enabled ? 'is-on' : ''}`} aria-hidden="true" />
-        {enabled ? '音效开' : '音效关'}
       </button>
 
       <main className="main">
